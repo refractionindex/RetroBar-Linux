@@ -1,3 +1,7 @@
+# Be warned
+
+This project is unstable and crash prone. Use at your own risk.
+
 # RetroBar for Linux (Python)
 
 A Python 3.13 port of RetroBar that runs natively on KDE Plasma (Wayland). It reads the same XAML
