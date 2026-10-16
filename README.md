@@ -1,4 +1,4 @@
-# Be warned
+# Beware
 
 This project is unstable and crash prone. Use at your own risk.
 
