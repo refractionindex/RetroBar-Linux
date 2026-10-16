@@ -1,0 +1,8 @@
+pywayland>=0.4.18
+
+[pip-gui]
+PyQt6>=6.5
+dbus-python>=1.3
+
+[test]
+pytest>=8

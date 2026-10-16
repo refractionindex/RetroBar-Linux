@@ -1,0 +1,2 @@
+[console_scripts]
+retrobar = retrobar.__main__:main
