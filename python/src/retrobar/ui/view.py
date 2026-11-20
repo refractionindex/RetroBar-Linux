@@ -272,6 +272,14 @@ class TaskbarView:
             size += self.scale * theme.number("TaskbarUnlockedSize")
         return max(1, round(size))
 
+    def start_overflow(self) -> int:
+        """Extra surface pixels on the desktop side of the bar so a floating Start orb is not clipped."""
+        theme = elements.theme()
+        bar = self.thickness() / max(self.scale, 0.01)
+        pad = theme.start_button_overflow(bar)
+        amount = {Edge.BOTTOM: pad.top, Edge.TOP: pad.bottom, Edge.LEFT: pad.right, Edge.RIGHT: pad.left}.get(self.edge, 0.0)
+        return max(0, round(amount * self.scale))
+
     def layout(self, width: float, height: float) -> None:
         self.size = (width, height)
         lw, lh = width / self.scale, height / self.scale
