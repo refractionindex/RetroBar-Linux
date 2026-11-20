@@ -18,7 +18,6 @@ themes and language files as the Windows version, so every bundled theme and any
 ## Setup
 
 ```sh
-cd python
 python3 -m venv --copies --system-site-packages .venv
 .venv/bin/pip install -e '.[test]'
 .venv/bin/python tools/install_desktop_file.py            # add --autostart to start with Plasma
@@ -50,10 +49,11 @@ Plasma keeps the Meta key for its own launcher.
 | --- | --- |
 | Settings | `$XDG_CONFIG_HOME/retrobar/settings.json` (same keys as the Windows `settings.json`) |
 | Extra themes | `$XDG_DATA_HOME/RetroBar/Themes/*.xaml` |
+| Theme images | `$XDG_DATA_HOME/RetroBar/Resources/` (PNGs referenced as `../Resources/...` from a theme) |
 | Extra languages | `$XDG_DATA_HOME/RetroBar/Languages/*.xaml` |
 | Bundled themes and languages | `../RetroBar/Themes`, `../RetroBar/Languages` (or `RETROBAR_DATA_DIR`) |
 
-Themes installed from the Properties dialog are copied into the extra-themes folder.
+Community theme packs (for example [Windows 7 Aero](https://github.com/DimonByte/RetroBar_Windows7_Theme)) ship a `Themes/` folder and a `Resources/` folder. Copy both into `$XDG_DATA_HOME/RetroBar`, or pick any `.xaml` from the pack in Properties › Install theme — RetroBar copies the matching `Resources` folder automatically. Themes alone, without their images, fall back to a flat tint and look nothing like Aero.
 
 ## What maps to what
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -192,24 +191,28 @@ class PropertiesDialog(QDialog):
 
     # --- themes folder ---------------------------------------------------------------------------------------------
     def _install_theme(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, self._s("theme_text").replace("_", "").rstrip(":"), str(Path.home()), "RetroBar themes (*.xaml)")
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            self._s("theme_text").replace("_", "").rstrip(":"),
+            str(Path.home()),
+            "RetroBar themes (*.xaml);;All files (*)",
+        )
         if not path:
             return
-        target_dir = self.theme.theme_install_dir()
-        target_dir.mkdir(parents=True, exist_ok=True)
-        target = target_dir / Path(path).name
         try:
-            shutil.copyfile(path, target)
-        except OSError as exc:
+            installed = self.theme.install_theme(Path(path))
+        except (OSError, ValueError, FileNotFoundError) as exc:
             QMessageBox.warning(self, self.windowTitle(), str(exc))
             return
         self.theme_combo.blockSignals(True)
         self.theme_combo.clear()
         self.theme_combo.addItems(self.theme.themes())
         self.theme_combo.blockSignals(False)
-        self.theme_combo.setCurrentText(target.stem)
+        if installed:
+            self.theme_combo.setCurrentText(installed[0])
 
     def _open_themes_folder(self) -> None:
-        folder = self.theme.theme_install_dir()
+        folder = self.theme.user_dir
         folder.mkdir(parents=True, exist_ok=True)
+        (folder / "Themes").mkdir(parents=True, exist_ok=True)
         subprocess.Popen(["xdg-open", str(folder)], start_new_session=True)

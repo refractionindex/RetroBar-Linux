@@ -99,7 +99,9 @@ class Taskbar(LayerSurface):
         self._hide_timer.timeout.connect(self.autohide)
         self._last_click: tuple[float, int] = (0.0, 0)
         self.press_closed_start = False
+        self.content_origin = (0.0, 0.0)
         self._minimized_rects: dict[Any, tuple[int, int, int, int]] = {}
+        self._input_region: Any = None
         self.apply_geometry()
 
     # --- geometry -----------------------------------------------------------------------------------
@@ -107,8 +109,14 @@ class Taskbar(LayerSurface):
         settings = self.app.settings
         edge = settings.edge
         thickness = self.view.thickness()
+        overflow = self.view.start_overflow()
         horizontal = edge in (Edge.TOP, Edge.BOTTOM)
-        width, height = (0, thickness) if horizontal else (thickness, 0)
+        # Grow the surface toward the desktop so UseFloatingStartButton orbs are not clipped; the
+        # exclusive zone stays at the taskbar thickness so maximized windows only clear the bar.
+        if horizontal:
+            width, height = 0, thickness + overflow
+        else:
+            width, height = thickness + overflow, 0
         exclusive = 0 if settings.AutoHide else thickness
         offset = -(thickness - AUTOHIDE_VISIBLE) if settings.AutoHide and self.hidden else 0
         margins = {
@@ -117,8 +125,41 @@ class Taskbar(LayerSurface):
             Edge.BOTTOM: (0, 0, offset, 0),
             Edge.LEFT: (0, 0, 0, offset),
         }[edge]
+        self.content_origin = {
+            Edge.BOTTOM: (0.0, float(overflow)),
+            Edge.TOP: (0.0, 0.0),
+            Edge.LEFT: (0.0, 0.0),
+            Edge.RIGHT: (float(overflow), 0.0),
+        }[edge]
         self.setup(ANCHORS[edge], width, height, exclusive, margins)
         self.request_redraw()
+
+    def bar_size(self) -> tuple[float, float]:
+        """Width and height of the taskbar content area (exclusive zone), in surface coordinates."""
+        ox, oy = self.content_origin
+        if self.app.settings.edge in (Edge.TOP, Edge.BOTTOM):
+            return float(self.width), float(self.height) - oy
+        return float(self.width) - ox, float(self.height)
+
+    def _to_view(self, x: float, y: float) -> tuple[float, float]:
+        ox, oy = self.content_origin
+        return x - ox, y - oy
+
+    def _update_input_region(self) -> None:
+        """Accept pointer hits on the bar and the Start orb; let the overflow strip pass clicks through."""
+        if self._destroyed or not self.configured:
+            return
+        region = self.client.compositor.create_region()
+        ox, oy = self.content_origin
+        bar_w, bar_h = self.bar_size()
+        region.add(int(ox), int(oy), max(1, int(bar_w)), max(1, int(bar_h)))
+        start = self.view.to_surface(self.view.start_button.rect)
+        if start.width() > 0 and start.height() > 0:
+            region.add(int(ox + start.x()), int(oy + start.y()), max(1, int(start.width())), max(1, int(start.height())))
+        self.surface.set_input_region(region)
+        if self._input_region is not None:
+            self._input_region.destroy()
+        self._input_region = region
 
     def show_bar(self) -> None:
         self._hide_timer.stop()
@@ -138,22 +179,30 @@ class Taskbar(LayerSurface):
 
     # --- painting -------------------------------------------------------------------------------------
     def paint(self, p: QPainter, rect: QRectF) -> None:
-        self.view.layout(rect.width(), rect.height())
+        bar_w, bar_h = self.bar_size()
+        self.view.layout(bar_w, bar_h)
+        ox, oy = self.content_origin
+        p.save()
+        p.translate(ox, oy)
         self.view.render(p)
+        p.restore()
+        self._update_input_region()
         QTimer.singleShot(0, self._update_minimized_geometry)
 
     def _update_minimized_geometry(self) -> None:
         if self._destroyed:
             return
+        ox, oy = self.content_origin
         for task in self.view.tasks:
             rect = self.view.task_rect(task.key)
             window = task.window
             if rect is None or window is None:
                 continue
-            key = (int(rect.x()), int(rect.y()), int(rect.width()), int(rect.height()))
+            surface_rect = rect.translated(ox, oy)
+            key = (int(surface_rect.x()), int(surface_rect.y()), int(surface_rect.width()), int(surface_rect.height()))
             if self._minimized_rects.get(task.key) != key:
                 self._minimized_rects[task.key] = key
-                window.set_minimized_geometry(self, rect)
+                window.set_minimized_geometry(self, surface_rect)
 
     # --- input ------------------------------------------------------------------------------------------
     def pointer_enter(self, x: float, y: float) -> None:
@@ -163,9 +212,10 @@ class Taskbar(LayerSurface):
 
     def pointer_motion(self, x: float, y: float) -> None:
         self.pointer_pos = (x, y)
-        if self.view.motion(x, y):
+        vx, vy = self._to_view(x, y)
+        if self.view.motion(vx, vy):
             self.request_redraw()
-        hit = self.view.hit_at(x, y)
+        hit = self.view.hit_at(vx, vy)
         key = (hit.role, id(hit.element))
         if key != self._tip_hit:
             self._tip_hit = key
@@ -186,35 +236,38 @@ class Taskbar(LayerSurface):
         self._tip_timer.stop()
         self.close_tooltip()
         self.pointer_pos = (x, y)
+        vx, vy = self._to_view(x, y)
         if pressed:
             self.press_closed_start = self.app.start_menu_open() or time.monotonic() - self.app.start_closed_at < START_DISMISS_SECONDS
-            self.view.press(button, x, y)
+            self.view.press(button, vx, vy)
             self.request_redraw()
             return
-        hit = self.view.hit_at(x, y)
+        hit = self.view.hit_at(vx, vy)
         now = time.monotonic()
         double = button == 1 and now - self._last_click[0] < DOUBLE_CLICK_SECONDS and self._last_click[1] == id(hit.element)
         self._last_click = (0.0, 0) if double else (now, id(hit.element))
-        self.view.release(button, x, y)
+        self.view.release(button, vx, vy)
         if double:
-            self.view.double_click(x, y)
+            self.view.double_click(vx, vy)
         self.request_redraw()
 
     def pointer_axis(self, value: float, x: float, y: float) -> None:
-        self.view.scroll(x, y, 1 if value > 0 else -1)
+        vx, vy = self._to_view(x, y)
+        self.view.scroll(vx, vy, 1 if value > 0 else -1)
         self.request_redraw()
 
     # --- tooltips ----------------------------------------------------------------------------------------
     def _show_tooltip(self) -> None:
         if not self.hovering or self.app.popup_open(self):
             return
-        x, y = self.pointer_pos
+        x, y = self._to_view(*self.pointer_pos)
         found = self.view.tooltip_at(x, y)
         if not found:
             return
         text, rect = found
+        ox, oy = self.content_origin
         self.close_tooltip()
-        self.tooltip = TooltipPopup(self.client, self, text, rect, TOOLTIP_SIDE[self.app.settings.edge], not self.app.settings.AllowFontSmoothingMenu)
+        self.tooltip = TooltipPopup(self.client, self, text, rect.translated(ox, oy), TOOLTIP_SIDE[self.app.settings.edge], not self.app.settings.AllowFontSmoothingMenu)
 
     def close_tooltip(self) -> None:
         if self.tooltip is not None:
@@ -225,6 +278,9 @@ class Taskbar(LayerSurface):
         self._tip_timer.stop()
         self._hide_timer.stop()
         self.close_tooltip()
+        if self._input_region is not None:
+            self._input_region.destroy()
+            self._input_region = None
         super().destroy()
 
 
@@ -544,14 +600,16 @@ class RetroBar(QObject):
         self.close_popups()
         bar.close_tooltip()
         view = bar.view
-        button = view.to_surface(view.start_button.rect)
+        ox, oy = bar.content_origin
+        button = view.to_surface(view.start_button.rect).translated(ox, oy)
         edge = self.settings.edge
+        bar_w, bar_h = bar.bar_size()
         # Grow from the bar's outer edge so the menu sits flush on it, like Windows.
         if edge in (Edge.TOP, Edge.BOTTOM):
-            anchor_rect = QRectF(button.x(), 0, max(1.0, button.width()), max(1, bar.height))
-            limit = self._screen_height(bar) - bar.height
+            anchor_rect = QRectF(button.x(), oy if edge == Edge.BOTTOM else 0, max(1.0, button.width()), max(1.0, bar_h))
+            limit = self._screen_height(bar) - bar_h
         else:
-            anchor_rect = QRectF(0, button.y(), max(1, bar.width), max(1.0, button.height()))
+            anchor_rect = QRectF(ox if edge == Edge.RIGHT else 0, button.y(), max(1.0, bar_w), max(1.0, button.height()))
             limit = self._screen_height(bar)
         actions = self._start_actions(bar)
         menu = StartMenuPopup(
