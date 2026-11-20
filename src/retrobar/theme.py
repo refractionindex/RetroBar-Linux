@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -13,6 +14,7 @@ from PyQt6.QtGui import QColor, QFont, QGuiApplication, QIcon, QImage, QPalette
 from . import paths
 from .xaml.markup import ResourceRef, StaticMember
 from .xaml.resources import MISSING, ControlTemplate, Loader, ResourceDictionary, Style, XObj
+from .xaml.values import Thickness
 
 if TYPE_CHECKING:
     from .ui.elements import Control
@@ -162,6 +164,85 @@ class Theme:
 
     def theme_install_dir(self) -> Path:
         return self.user_dir / THEME_FOLDER
+
+    def resources_dir(self) -> Path:
+        return self.user_dir / "Resources"
+
+    def install_theme(self, path: Path) -> list[str]:
+        """Copy a .xaml theme (and any sibling ``Resources`` the theme needs) into the user data dir.
+
+        Community packs such as the Windows 7 Aero theme ship ``Themes/*.xaml`` next to a
+        ``Resources/`` folder of PNGs. Themes look those up as ``../Resources/...``, so both
+        folders must land under ``$XDG_DATA_HOME/RetroBar``. Returns the installed theme names.
+        """
+        path = path.expanduser().resolve()
+        if path.is_dir():
+            themes_dir = path / THEME_FOLDER if (path / THEME_FOLDER).is_dir() else path
+            resources = path / "Resources" if (path / "Resources").is_dir() else themes_dir.parent / "Resources"
+            xamls = sorted(themes_dir.glob(f"*{EXT}"))
+            if not xamls:
+                raise FileNotFoundError(f"No {EXT} themes in {themes_dir}")
+        else:
+            if path.suffix.casefold() != EXT:
+                raise ValueError(f"Not a theme file: {path}")
+            xamls = [path]
+            resources = path.parent.parent / "Resources" if path.parent.name == THEME_FOLDER else path.parent / "Resources"
+            # Also accept Resources next to the .xaml (rare) or as ../Resources from Themes/.
+            if not resources.is_dir():
+                resources = path.parent / "Resources"
+
+        target_themes = self.theme_install_dir()
+        target_themes.mkdir(parents=True, exist_ok=True)
+        installed = []
+        for xaml in xamls:
+            dest = target_themes / xaml.name
+            shutil.copyfile(xaml, dest)
+            installed.append(dest.stem)
+        if resources.is_dir():
+            target_resources = self.resources_dir()
+            target_resources.mkdir(parents=True, exist_ok=True)
+            count = 0
+            for item in resources.iterdir():
+                if item.is_file():
+                    shutil.copy2(item, target_resources / item.name)
+                    count += 1
+            log.info("Installed %d resource file(s) into %s", count, target_resources)
+        else:
+            for xaml in xamls:
+                text = xaml.read_text(encoding="utf-8", errors="ignore")
+                if "../Resources/" in text or "../Resources\\" in text:
+                    log.warning("Theme %s references ../Resources/ but no Resources folder was found next to %s", xaml.name, path)
+                    break
+        return installed
+
+    def start_button_overflow(self, bar_thickness: float) -> Thickness:
+        """How far the Start orb sticks out past the taskbar, from the StartButton style (logical px)."""
+        if not self.flag("UseFloatingStartButton"):
+            return Thickness()
+        style = self.resource("StartButton")
+        if not isinstance(style, Style):
+            return Thickness()
+        setters = style.all_setters()
+        try:
+            width = float(setters["Width"].value) if "Width" in setters else 0.0
+            height = float(setters["Height"].value) if "Height" in setters else 0.0
+        except (TypeError, ValueError, KeyError):
+            width = height = 0.0
+        margin = Thickness()
+        if "Margin" in setters:
+            try:
+                margin = Thickness.parse(str(setters["Margin"].value))
+            except (TypeError, ValueError):
+                pass
+        # Centered in the bar with negative margins: protrude by half the surplus size, plus the pull.
+        extra_y = max(0.0, (height - bar_thickness) / 2)
+        extra_x = max(0.0, (width - bar_thickness) / 2)
+        return Thickness(
+            left=max(0.0, -margin.left, extra_x),
+            top=max(0.0, -margin.top, extra_y),
+            right=max(0.0, -margin.right, extra_x),
+            bottom=max(0.0, -margin.bottom, extra_y),
+        )
 
     # --- loading ------------------------------------------------------------------------------
     def _stack_lookup(self, key: Any) -> Any:
