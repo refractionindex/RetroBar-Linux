@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "retrobar"
-version = "1.23.0"
+version = "0.1.0"
 description = "Classic Windows taskbar for KDE Plasma on Wayland, using RetroBar's XAML themes"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -14,6 +14,10 @@ dependencies = [
     # PyQt6 and dbus-python come from the distribution (python3-pyqt6, python3-dbus);
     # create the virtual environment with --system-site-packages.
 ]
+
+[project.urls]
+Homepage = "https://github.com/refractionindex/RetroBar-Linux"
+Upstream = "https://github.com/dremin/RetroBar"
 
 [project.optional-dependencies]
 pip-gui = ["PyQt6>=6.5", "dbus-python>=1.3"]

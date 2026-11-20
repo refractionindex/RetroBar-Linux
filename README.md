@@ -1,12 +1,10 @@
-# Beware
-
-This project is unstable and crash prone. Use at your own risk.
-
 # RetroBar for Linux (Python)
 
-A Python 3.13 port of RetroBar that runs natively on KDE Plasma (Wayland). It reads the same XAML
-themes and language files as the Windows version, so every bundled theme and any third-party
-`.xaml` theme work without changes.
+A Python 3.13 port of [RetroBar](https://github.com/dremin/RetroBar) that runs natively on
+KDE Plasma (Wayland). It reads the same XAML themes and language files as the Windows version,
+so every bundled theme and any third-party `.xaml` theme work without changes.
+
+> **Status: experimental.** Unstable and crash-prone. KDE Plasma 6 on Wayland only. Use at your own risk.
 
 ## Requirements
 
@@ -14,6 +12,17 @@ themes and language files as the Windows version, so every bundled theme and any
 - Python 3.13 with PyQt6 and dbus-python from the distribution:
   `sudo apt install python3-pyqt6 python3-dbus`
 - `pywayland` (installed by pip from a binary wheel)
+
+## Theme data
+
+This repo does not vendor the Windows theme pack. Clone
+[dremin/RetroBar](https://github.com/dremin/RetroBar) next to this checkout (so
+`../RetroBar/Themes` exists), or point `RETROBAR_DATA_DIR` at that `RetroBar` folder:
+
+```sh
+git clone https://github.com/dremin/RetroBar.git ../RetroBar
+# or: export RETROBAR_DATA_DIR=/path/to/RetroBar/RetroBar
+```
 
 ## Setup
 
@@ -78,7 +87,7 @@ Community theme packs (for example [Windows 7 Aero](https://github.com/DimonByte
 
 ```sh
 .venv/bin/python -m pytest                              # loads and renders every theme offscreen
-.venv/bin/python tools/render_themes.py                 # PNG per theme in /tmp/retrobar-themes
+.venv/bin/python tools/render_themes.py                 # PNG per theme under $TMPDIR/retrobar-themes
 .venv/bin/python tools/render_themes.py --edge left     # vertical layout
 .venv/bin/python tools/contact_sheet.py                 # combine them into one image
 .venv/bin/python tools/gen_protocols.py                 # regenerate src/retrobar/protocol/
@@ -104,3 +113,9 @@ The `src/retrobar/` layout:
 - The Start menu has no Favorites, Find or Help entries, and Programs folders cannot be rearranged.
   Its strings are English unless a language file defines the `start_menu_*` keys.
 - Window thumbnails, jump lists and the Windows-only Explorer features are not available.
+
+## Credits and license
+
+Themes, languages, and the RetroBar design belong to the
+[upstream RetroBar](https://github.com/dremin/RetroBar) project (Apache-2.0). This port is
+also Apache-2.0; see `LICENSE`.

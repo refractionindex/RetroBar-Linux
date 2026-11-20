@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -31,7 +32,7 @@ def sample_tray() -> list[TrayData]:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--out", type=Path, default=Path("/tmp/retrobar-themes"))
+    parser.add_argument("--out", type=Path, default=Path(tempfile.gettempdir()) / "retrobar-themes")
     parser.add_argument("--width", type=int, default=1024)
     parser.add_argument("--edge", choices=[e.name.lower() for e in Edge], default="bottom")
     parser.add_argument("themes", nargs="*")
